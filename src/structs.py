@@ -6,7 +6,7 @@ import matplotlib.animation as animation
 from matplotlib.colors import ListedColormap
 import networkx as nx
 from IPython.display import HTML
-from matplotlib.patches import Ellipse
+from matplotlib.patches import Ellipse, Patch
 
 class State(IntEnum):
     UNAWARE = 0
@@ -35,32 +35,37 @@ class Node:
             self.alpha = gen()
         self.time = 0
         self.cluster_id = 0
+    
+    def reset(self) -> None:
+        self.state = State.UNAWARE
+        self.update_state = State.UNAWARE
+        self.time = 0
 
     def add_neighbor(self, neighbor) -> None:
         if neighbor not in self.neighbors:
             self.neighbors.append(neighbor)
 
     def check_neighbors(self) -> tuple[int, int, int, int]:
-        k1, k2, k3 = 0, 0, 0
+        n_unaware, n_spreader, n_silent = 0, 0, 0
         for u in self.neighbors:
             if u.state == State.UNAWARE:
-                k1 += 1
-            if u.state == State.SILENT:
-                k2 += 1
-            if u.state == State.SPREADER:
-                k3 += 1
-        return k1, k2, k3, k1+k2+k3
+                n_unaware += 1
+            elif u.state == State.SPREADER:
+                n_spreader += 1
+            elif u.state == State.SILENT:
+                n_silent += 1
+        return n_unaware, n_spreader, n_silent, n_unaware + n_spreader + n_silent
     
     def update(self, beta, T) -> State:
-        k1, k2, k3, n = self.check_neighbors()
+        n_unaware, n_spreader, n_silent, n_total = self.check_neighbors()
         if self.state == State.UNAWARE:
-            p = 1 - (1 - beta) ** k3
+            p = 1 - (1 - beta) ** n_spreader
             if np.random.random() < p:
                 self.update_state = State.SILENT
             else:
                 self.update_state = self.state
         elif self.state == State.SILENT:
-            p = self.alpha * k3 / n * k1 / n
+            p = self.alpha * n_spreader / n_total * n_unaware / n_total if n_total > 0 else 0
             if np.random.random() < p:
                 self.update_state = State.SPREADER
                 self.time = 0
@@ -91,7 +96,7 @@ class Model:
         snapshot = [u.state for u in self.nodes]
         self.history.append(snapshot)
 
-    def run(self, steps, record=False) -> None:
+    def run(self, steps, record=False):
         self.history = []
         if record:
             self.record()
@@ -102,6 +107,32 @@ class Model:
                 u.set_update()
             if record:
                 self.record()
+
+    def reset_model(self):
+        for u in self.nodes:
+            u.reset()
+    
+    def run_experiment(self):
+        i = 0
+        while True:
+            i += 1
+            n_unaware, n_spreader, n_silent = 0, 0, 0
+            for u in self.nodes:
+                state = u.update(self.beta, self.T)
+                if state == State.UNAWARE:
+                    n_unaware += 1
+                elif state == State.SPREADER:
+                    n_spreader += 1
+                elif state == State.SILENT:
+                    n_silent += 1
+            for u in self.nodes:
+                u.set_update()
+            if (n_spreader + n_silent) / (n_unaware + n_spreader + n_silent) >= 0.9:
+                self.reset_model()
+                return True, i
+            if n_spreader == 0:
+                self.reset_model()
+                return False, i
     
     def plot(self, steps, format=None, **kwargs):
         if len(self.history) < steps:
@@ -112,7 +143,7 @@ class Model:
             return self._plot_graph(**kwargs)
     
     def _plot_grid(self, n, m, interval=200):
-        cmap = ListedColormap(["white", "black", "gray"])
+        cmap = ListedColormap(["green", "red", "yellow"])
 
         def to_grid(snapshot):
             return np.array(snapshot).reshape((n, m))
@@ -123,6 +154,12 @@ class Model:
         def update(frame):
             im.set_array(to_grid(self.history[frame]))
             ax.set_title(f"Прошло {frame} ч.")
+            legend_handles = [
+                Patch(facecolor="green", edgecolor="black", label="неосведомлён"),
+                Patch(facecolor="yellow", edgecolor="black", label="сомневается"),
+                Patch(facecolor="red", edgecolor="black", label="пускает слухи"),
+            ]
+            ax.legend(handles=legend_handles, loc="upper right")
             return [im]
 
         self.ani = animation.FuncAnimation(
@@ -147,11 +184,11 @@ class Model:
             colors = []
             for s in snapshot:
                 if s == State.UNAWARE:
-                    colors.append("white")
+                    colors.append("green")
                 elif s == State.SILENT:
-                    colors.append("black")
+                    colors.append("yellow")
                 else:
-                    colors.append("grey")
+                    colors.append("red")
             return colors
 
         # --- если есть cluster_id, строим кластерный layout ---
@@ -265,6 +302,12 @@ class Model:
             )
             ax.set_title(f"Прошло {frame} ч.")
             ax.set_axis_off()
+            legend_handles = [
+                Patch(facecolor="green", edgecolor="black", label="неосведомлён"),
+                Patch(facecolor="yellow", edgecolor="black", label="сомневается"),
+                Patch(facecolor="red", edgecolor="black", label="пускает слухи"),
+            ]
+            ax.legend(handles=legend_handles, loc="upper right")
 
             if isinstance(edges, list):
                 return [nodes, *edges]
