@@ -191,26 +191,20 @@ class Model:
                     colors.append("red")
             return colors
 
-        # --- если есть cluster_id, строим кластерный layout ---
         has_clusters = all(hasattr(node, "cluster_id") for node in self.nodes)
 
         if has_clusters:
             clusters = {}
             for node in self.nodes:
                 clusters.setdefault(node.cluster_id, []).append(node)
-
             cluster_ids = sorted(clusters.keys())
             k = len(cluster_ids)
-
-            # центры кластеров по окружности
             radius = 6.0
             angles = np.linspace(0, 2 * np.pi, k, endpoint=False)
             cluster_centers = {
                 cid: np.array([radius * np.cos(a), radius * np.sin(a)])
                 for cid, a in zip(cluster_ids, angles)
             }
-
-            # позиции внутри каждого кластера
             pos = {}
             for cid in cluster_ids:
                 sub_nodes = clusters[cid]
@@ -224,14 +218,10 @@ class Model:
                 center = cluster_centers[cid]
                 for node, p in sub_pos.items():
                     pos[node] = np.array(p) + center
-
-            # межкластерные рёбра
             inter_edges = []
             for u, v in G.edges():
                 if getattr(u, "cluster_id", None) != getattr(v, "cluster_id", None):
                     inter_edges.append((u, v))
-
-            # овалы вокруг кластеров
             cluster_patches = []
             for cid in cluster_ids:
                 pts = np.array([pos[node] for node in clusters[cid]])
@@ -258,7 +248,6 @@ class Model:
                 )
 
         else:
-            # обычный fallback
             pos = nx.spring_layout(G, seed=42)
             inter_edges = list(G.edges())
             cluster_patches = []
@@ -268,8 +257,6 @@ class Model:
         def update(frame):
             ax.clear()
             colors = get_colors(self.history[frame])
-
-            # кластеры
             for patch in cluster_patches:
                 ax.add_patch(
                     Ellipse(

@@ -51,7 +51,7 @@ def cluster_graph(gen, n, k, p_in=0.9, p_out=0.3):
     for i, idx in enumerate(indices):
         cluster_id = i % k
         clusters[cluster_id].append(nodes[idx])
-        nodes[idx].cluster_id = cluster_id  # важно для отрисовки
+        nodes[idx].cluster_id = cluster_id
 
     for i in range(k):
         for j in range(i, k):
